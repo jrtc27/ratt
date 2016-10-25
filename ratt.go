@@ -37,6 +37,18 @@ var (
 		"",
 		"sbuild --dist= value (e.g. \"sid\"). Defaults to the Distribution: entry from the specified .changes file")
 
+	builder = flag.String("builder",
+		"sbuild",
+		"What build tool to use. Must be one of sbuild, pbuilder or cowbuilder. Defaults to sbuild")
+
+	basetgz = flag.String("basetgz",
+		"",
+		"pbuilder --basetgz value (e.g. \"/var/cache/pbuilder/base.tgz\")")
+
+	basepath = flag.String("basepath",
+		"",
+		"cowbuilder --basepath value (e.g. \"/var/cache/pbuilder/base.cow\")")
+
 	listsPrefixRe = regexp.MustCompile(`/([^/]*_dists_.*)_InRelease$`)
 )
 
@@ -246,9 +258,11 @@ func main() {
 
 	// TODO: what’s a good integration method for doing this in more setups, e.g. on a cloud provider or something? mapreri from #debian-qa says jenkins.debian.net is suitable.
 
-	if strings.TrimSpace(*sbuildDist) == "" {
-		*sbuildDist = changes.Distribution
-		log.Printf("Setting -sbuild_dist=%s (from .changes file)\n", *sbuildDist)
+	if *builder == "sbuild" {
+		if strings.TrimSpace(*sbuildDist) == "" {
+			*sbuildDist = changes.Distribution
+			log.Printf("Setting -sbuild_dist=%s (from .changes file)\n", *sbuildDist)
+		}
 	}
 
 	buildresults := make(map[string]bool)
@@ -257,11 +271,31 @@ func main() {
 		newest := versions[0]
 		target := fmt.Sprintf("%s_%s", src, newest)
 		// TODO: discard resulting package immediately?
-		args := []string{
-			"--arch-all",
-			"--dist=" + *sbuildDist,
-			"--nolog",
-			target,
+		var args []string;
+		switch *builder {
+		case "sbuild":
+			args := []string{
+				"--arch-all",
+				"--dist=" + *sbuildDist,
+				"--nolog",
+				target,
+			}
+		case "pbuilder":
+			if *basetgz != "" {
+				args := []string{
+					"--basetgz",
+					*basetgz,
+				}
+			}
+		case "cowbuilder":
+			if *basepath != "" {
+				args := []string {
+					"--basepath",
+					*basepath,
+				}
+			}
+		default:
+			log.Fatal("Unknown builder %s\n", *builder);
 		}
 		for _, filename := range debs {
 			args = append(args, fmt.Sprintf("--extra-package=%s", filename))
